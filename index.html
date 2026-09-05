@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; upgrade-insecure-requests">
+  <title>¿Dónde aparqué?</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" href="./icons/icon-192.png" sizes="192x192">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>¿Dónde aparqué?</h1>
+        <p id="statusText" class="status" aria-live="polite">Preparando ubicación…</p>
+      </div>
+      <button id="installHelpBtn" class="icon-button" type="button" aria-label="Cómo instalar la app" title="Cómo instalar">＋</button>
+    </header>
+
+    <section class="map-card" aria-label="Mapa de ubicación">
+      <div id="map" class="map" role="application" aria-label="Mapa interactivo. Toca para marcar dónde has dejado el coche.">
+        <div id="tileLayer" class="tile-layer" aria-hidden="true"></div>
+        <div id="accuracyCircle" class="map-circle accuracy-circle" aria-hidden="true"></div>
+        <div id="tenMeterCircle" class="map-circle ten-meter-circle" aria-hidden="true"></div>
+        <div id="userMarker" class="map-marker user-marker" aria-label="Tu ubicación" hidden><span></span></div>
+        <div id="candidateMarker" class="map-marker candidate-marker" aria-label="Punto seleccionado para el coche" hidden>📍</div>
+        <div id="carMarker" class="map-marker car-marker" aria-label="Coche aparcado" hidden>🚗</div>
+        <div class="map-controls" aria-label="Controles del mapa">
+          <button id="zoomInBtn" type="button" aria-label="Acercar mapa">＋</button>
+          <button id="zoomOutBtn" type="button" aria-label="Alejar mapa">−</button>
+          <button id="locateBtn" type="button" aria-label="Centrar en mi posición">⌖</button>
+        </div>
+        <div class="map-hint" id="mapHint">Toca el mapa donde está el coche</div>
+        <div class="attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="metrics">
+        <div><span class="metric-label">Precisión GPS</span><strong id="accuracyValue">—</strong></div>
+        <div><span class="metric-label">Distancia al coche</span><strong id="distanceValue">—</strong></div>
+      </div>
+
+      <div id="candidateActions" class="actions" hidden>
+        <button id="saveHereBtn" class="primary" type="button">🚗 Guardar aquí</button>
+        <button id="cancelCandidateBtn" class="secondary" type="button">Cancelar punto</button>
+      </div>
+
+      <div id="emptyState" class="empty-state">
+        <span class="empty-icon">🚙</span>
+        <h2>No hay coche guardado</h2>
+        <p>Localízate y toca exactamente en el mapa donde lo has dejado.</p>
+      </div>
+
+      <div id="parkingState" hidden>
+        <div class="parking-summary">
+          <div>
+            <span class="eyebrow">Coche guardado</span>
+            <strong id="parkedWhen">—</strong>
+          </div>
+          <button id="showBothBtn" class="secondary compact" type="button">Ver ambos</button>
+        </div>
+        <div id="coordinates" class="coordinates">—</div>
+
+        <div class="actions route-actions">
+          <button id="walkBtn" class="primary" type="button">🚶 Cómo llegar</button>
+          <button id="driveBtn" class="secondary" type="button">🚗 Ir en coche</button>
+        </div>
+        <button id="clearBtn" class="danger ghost" type="button">✓ Coche recogido</button>
+      </div>
+
+      <details class="privacy">
+        <summary>Privacidad y seguridad</summary>
+        <p>La ubicación guardada se almacena en el espacio local de esta app web en este dispositivo. No hay cuenta, servidor propio, analítica ni historial de aparcamientos.</p>
+        <p>OpenStreetMap recibe las peticiones necesarias para dibujar la zona del mapa. Google recibe el destino únicamente cuando pulsas «Cómo llegar» o «Ir en coche».</p>
+      </details>
+    </section>
+  </main>
+
+  <dialog id="installDialog">
+    <div class="dialog-body">
+      <h2>Instalar en iPhone</h2>
+      <ol>
+        <li>Abre esta página con <strong>Safari</strong>.</li>
+        <li>Pulsa <strong>Compartir</strong>.</li>
+        <li>Elige <strong>Añadir a pantalla de inicio</strong>.</li>
+        <li>Activa <strong>Abrir como app web</strong>.</li>
+        <li>Pulsa <strong>Añadir</strong>.</li>
+      </ol>
+      <p class="small">Después aparecerá el icono «¿Dónde aparqué?» como cualquier otra app.</p>
+      <button id="closeInstallBtn" class="primary" type="button">Entendido</button>
+    </div>
+  </dialog>
+
+  <dialog id="confirmDialog">
+    <div class="dialog-body">
+      <h2 id="confirmTitle">Confirmar</h2>
+      <p id="confirmMessage"></p>
+      <div class="dialog-actions">
+        <button id="confirmCancelBtn" class="secondary" type="button">Cancelar</button>
+        <button id="confirmOkBtn" class="danger" type="button">Confirmar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
