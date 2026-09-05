@@ -5,7 +5,7 @@
   const TILE_SIZE = 256;
   const EARTH_RADIUS = 6378137;
   const MIN_ZOOM = 3;
-  const MAX_ZOOM = 19;
+  const MAX_ZOOM = 20;
 
   const $ = (id) => document.getElementById(id);
   const els = {
