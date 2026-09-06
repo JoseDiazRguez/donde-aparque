@@ -1,4 +1,4 @@
-:root {
+f:root {
   --bg:#f4f6f9; --surface:#fff; --text:#152033; --muted:#627086; --border:#d8dee8;
   --accent:#0b5fff; --accent-contrast:#fff; --danger:#b42318; --danger-bg:#fff1f0;
   --ok:#137a42; --ok-bg:#eaf8f0; --shadow:0 6px 22px rgba(15,32,60,.10);
@@ -55,7 +55,7 @@ dialog::backdrop{background:rgba(10,17,30,.58)}.dialog-body{padding:18px}.dialog
 [hidden]{display:none!important}
 @media(max-width:430px){
   .app-shell{padding:5px}.map{height:55svh;min-height:330px;max-height:500px}.panel{margin-top:5px;padding:6px 7px 5px}
-  .route-actions button{min-height:37px;padding:5px 4px;font-size:10.5px}.privacy summary{min-height:23px}
+  .route-actions button{min-height:43px;padding:7px 5px;font-size:12.5px;line-height:1.15;font-weight:800;}.privacy summary{min-height:23px}
 }
 @media(max-height:740px) and (max-width:430px){
   .map{height:51svh;min-height:300px}.privacy{display:none}
