@@ -23,10 +23,10 @@
                  object-src 'none';
                  upgrade-insecure-requests">
   <title>¿Dónde aparqué?</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=110">
+  <link rel="manifest" href="./manifest.webmanifest?v=120">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=3">
   <link rel="icon" href="./icons/icon-192.png?v=3" sizes="192x192">
-  <link rel="stylesheet" href="./styles.css?v=110">
+  <link rel="stylesheet" href="./styles.css?v=120">
 </head>
 <body>
   <main class="app-shell">
@@ -36,10 +36,16 @@
         <p id="statusText" class="status" aria-live="polite">Preparando ubicación…</p>
       </div>
       <div class="topbar-actions">
-        <span id="syncBadge" class="sync-badge" hidden>Local</span>
+        <span id="syncBadge" class="sync-badge" hidden>Compartido</span>
         <button id="installHelpBtn" class="icon-button" type="button" aria-label="Cómo instalar la app" title="Cómo instalar">＋</button>
       </div>
     </header>
+
+    <section class="car-switcher" aria-label="Coche seleccionado">
+      <select id="carSelect" aria-label="Seleccionar coche"></select>
+      <button id="editCarBtn" class="secondary car-tool" type="button" aria-label="Editar nombre del coche" title="Editar coche">✎</button>
+      <button id="addCarBtn" class="primary car-add" type="button">＋ Coche</button>
+    </section>
 
     <section class="map-card" aria-label="Mapa de ubicación">
       <div id="map" class="map" role="application" aria-label="Mapa interactivo. Toca para marcar dónde has dejado el coche.">
@@ -76,8 +82,8 @@
       <div id="emptyState" class="empty-state">
         <span class="empty-icon">🚙</span>
         <div>
-          <strong>No hay coche guardado</strong>
-          <p>Toca el mapa donde lo has dejado.</p>
+          <strong id="emptyCarName">Mi coche</strong>
+          <p>No hay ubicación guardada.</p>
         </div>
         <button id="shareEmptyBtn" class="secondary compact" type="button">👥 Compartir</button>
       </div>
@@ -85,7 +91,7 @@
       <div id="parkingState" hidden>
         <div class="parking-summary compact-summary">
           <div>
-            <span class="eyebrow">🚗 Coche guardado</span>
+            <span id="parkingCarName" class="eyebrow">🚗 Mi coche</span>
             <strong id="parkedWhen">—</strong>
           </div>
           <button id="shareBtn" class="secondary compact" type="button">👥 Compartir</button>
@@ -100,11 +106,27 @@
 
       <details class="privacy">
         <summary>Privacidad y seguridad</summary>
-        <p>Sin compartir, el aparcamiento permanece solo en este dispositivo.</p>
-        <p>Al compartir, Firebase almacena únicamente el estado cifrado del coche. La clave de descifrado permanece en los dispositivos vinculados.</p>
+        <p>Sin compartir, nombre y ubicación permanecen solo en este dispositivo.</p>
+        <p>Al compartir, tanto el nombre del coche como su ubicación viajan cifrados. Firebase no los almacena en texto legible.</p>
       </details>
     </section>
   </main>
+
+  <dialog id="carDialog">
+    <form id="carForm" class="dialog-body">
+      <h2 id="carDialogTitle">Añadir coche</h2>
+      <label class="field-label" for="carNameInput">Nombre del coche</label>
+      <input id="carNameInput" class="text-input" type="text" maxlength="40" autocomplete="off" placeholder="Ej.: Coche de José" required>
+      <p class="small">Si este coche está compartido, el nombre también se sincroniza cifrado con los dispositivos vinculados.</p>
+      <div id="carDeleteArea" hidden>
+        <button id="deleteCarBtn" class="danger ghost full" type="button">Eliminar de este dispositivo</button>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancelCarBtn" class="secondary" type="button">Cancelar</button>
+        <button id="saveCarBtn" class="primary" type="submit">Guardar</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="installDialog">
     <div class="dialog-body">
@@ -116,7 +138,7 @@
         <li>Activa <strong>Abrir como app web</strong>.</li>
         <li>Pulsa <strong>Añadir</strong>.</li>
       </ol>
-      <button id="closeInstallBtn" class="primary" type="button">Entendido</button>
+      <button id="closeInstallBtn" class="primary full" type="button">Entendido</button>
     </div>
   </dialog>
 
@@ -133,7 +155,7 @@
 
   <dialog id="shareDialog">
     <div class="dialog-body share-dialog-body">
-      <h2>Compartir coche</h2>
+      <h2 id="shareDialogTitle">Compartir coche</h2>
       <p id="shareHelpText" class="dialog-text">Genera un QR para vincular otro móvil con este coche.</p>
 
       <div id="shareSetup" class="share-setup">
@@ -142,7 +164,7 @@
 
       <div id="shareReady" hidden>
         <div id="qrBox" class="qr-box" aria-label="Código QR para vincular otro dispositivo"></div>
-        <p class="small center">Escanéalo con la cámara del otro iPhone. El enlace contiene la clave del coche: compártelo solo con personas de confianza.</p>
+        <p class="small center">El QR contiene la clave de este coche. Compártelo solo con personas de confianza.</p>
         <div class="actions two">
           <button id="nativeShareBtn" class="primary" type="button">Compartir enlace</button>
           <button id="leaveShareBtn" class="secondary" type="button">Desvincular</button>
@@ -156,8 +178,8 @@
   <dialog id="joinDialog">
     <div class="dialog-body">
       <h2>Vincular coche compartido</h2>
-      <p>Este enlace permite acceder al mismo aparcamiento compartido.</p>
-      <p class="small">Al vincularlo, este dispositivo recibirá las futuras actualizaciones del coche.</p>
+      <p>Este enlace añadirá un nuevo coche compartido a tu aplicación.</p>
+      <p class="small">El nombre y la ubicación se descargarán cifrados y solo se descifrarán en este dispositivo.</p>
       <div class="dialog-actions">
         <button id="cancelJoinBtn" class="secondary" type="button">Cancelar</button>
         <button id="acceptJoinBtn" class="primary" type="button">Vincular</button>
@@ -169,6 +191,6 @@
           src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"
           integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k"
           crossorigin="anonymous"></script>
-  <script src="./app.js?v=110" defer></script>
+  <script src="./app.js?v=120" defer></script>
 </body>
 </html>
