@@ -1,11 +1,11 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.0.1';
   const TILE_SIZE = 256;
   const EARTH_RADIUS = 6378137;
   const MIN_ZOOM = 3;
-  const MAX_ZOOM = 20;
+  const MAX_ZOOM = 19;
 
   const $ = (id) => document.getElementById(id);
   const els = {
