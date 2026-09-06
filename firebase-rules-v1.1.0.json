@@ -1,0 +1,28 @@
+{
+  "rules": {
+    "cars": {
+      "$carId": {
+        ".write": "auth != null && !data.exists() && newData.child('ownerUid').val() === auth.uid",
+        "payload": {
+          ".read": "auth != null && root.child('cars').child($carId).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('cars').child($carId).child('members').child(auth.uid).exists()",
+          ".validate": "!newData.exists() || (newData.hasChildren(['ciphertext', 'iv', 'updatedAt']) && newData.child('ciphertext').isString() && newData.child('iv').isString() && newData.child('updatedAt').isNumber())"
+        },
+        "members": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.child('inviteToken').val() === root.child('cars').child($carId).child('inviteToken').val()) || data.exists())"
+          }
+        },
+        "inviteToken": {
+          ".read": false,
+          ".write": false
+        },
+        "ownerUid": {
+          ".read": false,
+          ".write": false
+        }
+      }
+    }
+  }
+}
