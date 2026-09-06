@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "cars": {
+      "$carId": {
+        ".write": "auth != null && !data.exists() && newData.child('ownerUid').val() === auth.uid",
+        "payload": {
+          ".read": "auth != null && root.child('cars').child($carId).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('cars').child($carId).child('members').child(auth.uid).exists()",
+          ".validate": "!newData.exists() || (newData.hasChildren(['ciphertext', 'iv', 'updatedAt']) && newData.child('ciphertext').isString() && newData.child('iv').isString() && newData.child('updatedAt').isNumber())"
+        },
+        "members": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.child('inviteToken').val() === root.child('cars').child($carId).child('inviteToken').val()) || data.exists())"
+          }
+        },
+        "inviteToken": { ".read": false, ".write": false },
+        "ownerUid": { ".read": false, ".write": false }
+      }
+    },
+    "transfers": {
+      "$transferId": {
+        ".read": "auth != null && data.child('expiresAt').isNumber() && data.child('expiresAt').val() > now",
+        ".write": "auth != null && ((!data.exists() && newData.child('creatorUid').val() === auth.uid && newData.child('expiresAt').isNumber() && newData.child('expiresAt').val() > now && newData.child('expiresAt').val() <= now + 900000) || (data.exists() && data.child('creatorUid').val() === auth.uid))",
+        ".validate": "!newData.exists() || (newData.hasChildren(['ciphertext','iv','expiresAt','creatorUid']) && newData.child('ciphertext').isString() && newData.child('iv').isString() && newData.child('expiresAt').isNumber() && newData.child('creatorUid').isString())"
+      }
+    }
+  }
+}

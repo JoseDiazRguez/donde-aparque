@@ -1,7 +1,7 @@
 {
   "name": "¿Dónde aparqué?",
   "short_name": "Dónde aparqué",
-  "description": "Guarda y comparte de forma cifrada la ubicación de varios coches.",
+  "description": "Guarda y comparte de forma cifrada la ubicación de varios coches, con vinculación por QR o código.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -23,10 +23,10 @@
                  object-src 'none';
                  upgrade-insecure-requests">
   <title>¿Dónde aparqué?</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=120">
+  <link rel="manifest" href="./manifest.webmanifest?v=122">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=3">
   <link rel="icon" href="./icons/icon-192.png?v=3" sizes="192x192">
-  <link rel="stylesheet" href="./styles.css?v=120">
+  <link rel="stylesheet" href="./styles.css?v=122">
 </head>
 <body>
   <main class="app-shell">
@@ -118,6 +118,9 @@
       <label class="field-label" for="carNameInput">Nombre del coche</label>
       <input id="carNameInput" class="text-input" type="text" maxlength="40" autocomplete="off" placeholder="Ej.: Coche de José" required>
       <p class="small">Si este coche está compartido, el nombre también se sincroniza cifrado con los dispositivos vinculados.</p>
+      <div id="joinCarArea" class="join-car-area">
+        <button id="openCodeJoinBtn" class="secondary full" type="button">🔗 Vincular coche con código</button>
+      </div>
       <div id="carDeleteArea" hidden>
         <button id="deleteCarBtn" class="danger ghost full" type="button">Eliminar de este dispositivo</button>
       </div>
@@ -164,14 +167,50 @@
 
       <div id="shareReady" hidden>
         <div id="qrBox" class="qr-box" aria-label="Código QR para vincular otro dispositivo"></div>
-        <p class="small center">El QR contiene la clave de este coche. Compártelo solo con personas de confianza.</p>
-        <div class="actions two">
-          <button id="nativeShareBtn" class="primary" type="button">Compartir enlace</button>
-          <button id="leaveShareBtn" class="secondary" type="button">Desvincular</button>
+        <div class="transfer-code-card">
+          <span class="small">Código de vinculación</span>
+          <strong id="transferCode">—</strong>
+          <span id="transferExpiry" class="small">—</span>
         </div>
+        <p class="small center">El código puede usarse en Safari y también dentro de la app instalada mientras siga vigente.</p>
+        <div class="actions two">
+          <button id="nativeShareBtn" class="primary" type="button">Compartir</button>
+          <button id="newTransferBtn" class="secondary" type="button">Nuevo código</button>
+        </div>
+        <button id="leaveShareBtn" class="secondary full" type="button">Desvincular</button>
       </div>
 
       <button id="closeShareBtn" class="secondary full" type="button">Cerrar</button>
+    </div>
+  </dialog>
+
+  <dialog id="codeJoinDialog">
+    <form id="codeJoinForm" class="dialog-body">
+      <h2>Vincular coche con código</h2>
+      <p class="small">Introduce el código que aparece en el móvil que comparte el coche.</p>
+      <input id="joinCodeInput" class="text-input code-input" type="text" maxlength="20"
+             autocomplete="off" autocapitalize="characters" spellcheck="false"
+             placeholder="7K4M-Q9ZT-2P8X" required>
+      <div class="dialog-actions">
+        <button id="cancelCodeJoinBtn" class="secondary" type="button">Cancelar</button>
+        <button id="submitCodeJoinBtn" class="primary" type="submit">Vincular</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="transferLandingDialog">
+    <div class="dialog-body">
+      <h2>Coche compartido detectado</h2>
+      <p>Puedes vincularlo en este navegador o copiar el código y utilizarlo en la app instalada.</p>
+      <div class="transfer-code-card">
+        <span class="small">Código</span>
+        <strong id="landingCode">—</strong>
+      </div>
+      <div class="actions two">
+        <button id="linkHereBtn" class="primary" type="button">Vincular aquí</button>
+        <button id="copyLandingCodeBtn" class="secondary" type="button">Copiar código</button>
+      </div>
+      <button id="closeLandingBtn" class="secondary full" type="button">Cerrar</button>
     </div>
   </dialog>
 
@@ -191,6 +230,6 @@
           src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"
           integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k"
           crossorigin="anonymous"></script>
-  <script src="./app.js?v=120" defer></script>
+  <script src="./app.js?v=122" defer></script>
 </body>
 </html>

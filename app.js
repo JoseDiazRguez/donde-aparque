@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.2.2';
   const TILE_SIZE = 256, EARTH_RADIUS = 6378137, MIN_ZOOM = 3, MAX_ZOOM = 19;
   const FIREBASE = {
     apiKey:'AIzaSyCrhYq5nuXtdnGubI8M_kdsezDvgkZ5QbU',
@@ -20,14 +20,14 @@
     installDialog:$('installDialog'),confirmDialog:$('confirmDialog'),confirmTitle:$('confirmTitle'),
     confirmMessage:$('confirmMessage'),confirmOkBtn:$('confirmOkBtn'),
     shareDialog:$('shareDialog'),shareDialogTitle:$('shareDialogTitle'),shareSetup:$('shareSetup'),shareReady:$('shareReady'),
-    qrBox:$('qrBox'),shareHelpText:$('shareHelpText'),joinDialog:$('joinDialog')
+    qrBox:$('qrBox'),shareHelpText:$('shareHelpText'),joinDialog:$('joinDialog'),transferCode:$('transferCode'),transferExpiry:$('transferExpiry'),codeJoinDialog:$('codeJoinDialog'),joinCodeInput:$('joinCodeInput'),transferLandingDialog:$('transferLandingDialog'),landingCode:$('landingCode')
   };
 
   const state = {
     center:{lat:37.3891,lon:-5.9845},zoom:18,user:null,candidate:null,parking:null,
     watchId:null,locatedOnce:false,pointers:new Map(),gesture:null,auth:null,
     cars:[],activeCarId:null,share:null,pendingJoin:null,stream:null,syncTimer:null,syncing:false,
-    carDialogMode:'add'
+    carDialogMode:'add',activeTransfer:null,pendingTransferCode:null
   };
   const enc = new TextEncoder(), dec = new TextDecoder();
 
@@ -167,6 +167,42 @@
   function randomToken(bytes=18){const a=new Uint8Array(bytes);crypto.getRandomValues(a);return bytesToB64u(a)}
   function encodeInvite(obj){return bytesToB64u(enc.encode(JSON.stringify(obj)))}
   function decodeInvite(s){return JSON.parse(dec.decode(b64uToBytes(s)))}
+
+  function normalizeTransferCode(value){
+    return String(value||'').toUpperCase().replace(/[^0-9A-Z]/g,'')
+      .replace(/[O]/g,'0').replace(/[IL]/g,'1');
+  }
+  function formatTransferCode(raw){
+    raw=normalizeTransferCode(raw);
+    return raw.match(/.{1,4}/g)?.join('-')||raw;
+  }
+  function newTransferCode(){
+    const alphabet='23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+    const bytes=new Uint8Array(12);crypto.getRandomValues(bytes);
+    let out='';for(const b of bytes)out+=alphabet[b%alphabet.length];
+    return formatTransferCode(out);
+  }
+  async function sha256Bytes(text){
+    return new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(text)));
+  }
+  async function transferIdFromCode(code){
+    return bytesToB64u(await sha256Bytes('donde-aparque-transfer:'+normalizeTransferCode(code)));
+  }
+  async function transferCryptoKey(code){
+    const bytes=await sha256Bytes('donde-aparque-transfer-key:'+normalizeTransferCode(code));
+    return crypto.subtle.importKey('raw',bytes,{name:'AES-GCM'},false,['encrypt','decrypt']);
+  }
+  async function encryptTransfer(invite,code){
+    const key=await transferCryptoKey(code),iv=crypto.getRandomValues(new Uint8Array(12));
+    const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,enc.encode(JSON.stringify(invite)));
+    return{ciphertext:bytesToB64u(new Uint8Array(cipher)),iv:bytesToB64u(iv)};
+  }
+  async function decryptTransfer(record,code){
+    const key=await transferCryptoKey(code);
+    const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64uToBytes(record.iv)},key,b64uToBytes(record.ciphertext));
+    return JSON.parse(dec.decode(plain));
+  }
+
   async function importAes(keyText){return crypto.subtle.importKey('raw',b64uToBytes(keyText),{name:'AES-GCM'},false,['encrypt','decrypt'])}
 
   function activeRemoteState(){
@@ -209,10 +245,87 @@
     }catch(e){status(e.message||'No se pudo crear el coche compartido.')}finally{state.syncing=false;updateUI()}
   }
 
-  function inviteURL(){if(!state.share)return'';const payload=encodeInvite({c:state.share.carId,t:state.share.inviteToken,k:state.share.key,v:2});return`${location.origin}${location.pathname}#join=${payload}`}
-  function renderQR(text){els.qrBox.replaceChildren();if(typeof window.qrcode!=='function'){els.qrBox.textContent='No se pudo cargar el QR. Usa “Compartir enlace”.';return}try{const qr=window.qrcode(0,'M');qr.addData(text);qr.make();els.qrBox.innerHTML=qr.createSvgTag({cellSize:5,margin:4,scalable:true})}catch(_){els.qrBox.textContent='No se pudo generar el QR.'}}
-  function renderShareDialog(){const car=activeCar(),has=!!state.share;els.shareDialogTitle.textContent=`Compartir · ${car?.name||'Coche'}`;els.shareSetup.hidden=has;els.shareReady.hidden=!has;els.shareHelpText.textContent=has?'Este QR vincula otro dispositivo a este coche.':'Crea el coche compartido para generar el QR.';if(has)renderQR(inviteURL())}
-  function openShareDialog(){renderShareDialog();els.shareDialog.showModal()}
+  async function createTransfer(force=false){
+    if(!state.share)return null;
+    const now=Date.now();
+    if(!force && state.activeTransfer?.expiresAt>now+30000)return state.activeTransfer;
+
+    const auth=await ensureAuth();
+    const code=newTransferCode();
+    const transferId=await transferIdFromCode(code);
+    const expiresAt=Date.now()+15*60*1000;
+    const encrypted=await encryptTransfer({
+      c:state.share.carId,t:state.share.inviteToken,k:state.share.key,v:3
+    },code);
+    const record={...encrypted,expiresAt,creatorUid:auth.uid};
+
+    const res=await firebaseFetch(`/transfers/${encodeURIComponent(transferId)}.json`,{
+      method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)
+    });
+    if(!res.ok)throw new Error(`No se pudo crear el código (${res.status}).`);
+
+    state.activeTransfer={code,transferId,expiresAt};
+    return state.activeTransfer;
+  }
+
+  function transferURL(code){
+    return `${location.origin}${location.pathname}#transfer=${encodeURIComponent(normalizeTransferCode(code))}`;
+  }
+
+  function updateTransferDisplay(){
+    const tr=state.activeTransfer;
+    if(!tr){els.transferCode.textContent='—';els.transferExpiry.textContent='—';return;}
+    els.transferCode.textContent=formatTransferCode(tr.code);
+    const mins=Math.max(0,Math.ceil((tr.expiresAt-Date.now())/60000));
+    els.transferExpiry.textContent=`Válido aproximadamente ${mins} min`;
+    renderQR(transferURL(tr.code));
+  }
+
+  async function renderShareDialog(){
+    const car=activeCar(),has=!!state.share;
+    els.shareDialogTitle.textContent=`Compartir · ${car?.name||'Coche'}`;
+    els.shareSetup.hidden=has;els.shareReady.hidden=!has;
+    els.shareHelpText.textContent=has
+      ?'Escanea el QR o introduce el código en otro navegador/app.'
+      :'Crea el coche compartido para generar un QR y un código.';
+    if(has){
+      try{await createTransfer(false);updateTransferDisplay()}
+      catch(e){status(e.message||'No se pudo generar el código.')}
+    }
+  }
+  async function openShareDialog(){els.shareDialog.showModal();await renderShareDialog()}
+
+
+  async function redeemTransferCode(code){
+    const normalized=normalizeTransferCode(code);
+    if(normalized.length!==12)throw new Error('El código debe tener 12 caracteres.');
+    const transferId=await transferIdFromCode(normalized);
+    const res=await firebaseFetch(`/transfers/${encodeURIComponent(transferId)}.json`);
+    if(res.status===404)throw new Error('Código no encontrado.');
+    if(!res.ok)throw new Error('El código no es válido o ha caducado.');
+    const record=await res.json();
+    if(!record || Number(record.expiresAt)<=Date.now())throw new Error('El código ha caducado.');
+    let invite;
+    try{invite=await decryptTransfer(record,normalized)}
+    catch(_){throw new Error('El código no es correcto.');}
+    if(!invite?.c||!invite?.t||!invite?.k)throw new Error('La invitación no es válida.');
+    return invite;
+  }
+
+  async function linkWithTransferCode(code){
+    state.syncing=true;updateUI();
+    try{
+      const invite=await redeemTransferCode(code);
+      await joinSharedCar(invite);
+      try{els.codeJoinDialog.close()}catch(_){}
+      try{els.transferLandingDialog.close()}catch(_){}
+      history.replaceState(null,'',location.pathname+location.search);
+    }catch(e){
+      status(e.message||'No se pudo vincular con ese código.');
+    }finally{
+      state.syncing=false;updateUI();
+    }
+  }
 
   async function joinSharedCar(invite){
     state.syncing=true;updateUI();
@@ -279,14 +392,21 @@
     stopStream();car.share=null;state.share=null;await persistCars();try{els.shareDialog.close()}catch(_){}updateUI();status('Este coche ya no está vinculado.');
   }
   async function shareInvite(){
-    const url=inviteURL();if(!url)return;if(navigator.share)try{await navigator.share({title:`¿Dónde aparqué? · ${activeCar()?.name||'Coche'}`,text:'Vincula este dispositivo al coche compartido.',url});return}catch(_){}
-    window.prompt('Copia este enlace y envíalo a la otra persona:',url);
+    try{
+      const tr=await createTransfer(false),url=transferURL(tr.code);
+      const text=`Código: ${formatTransferCode(tr.code)}`;
+      if(navigator.share)try{
+        await navigator.share({title:`¿Dónde aparqué? · ${activeCar()?.name||'Coche'}`,text,url});return;
+      }catch(_){}
+      window.prompt('Copia este código o enlace:',`${formatTransferCode(tr.code)}
+${url}`);
+    }catch(e){status(e.message||'No se pudo compartir.')}
   }
 
   function openCarDialog(mode){
     const car=activeCar();state.carDialogMode=mode;
-    if(mode==='add'){els.carDialogTitle.textContent='Añadir coche';els.carNameInput.value='';els.carDeleteArea.hidden=true}
-    else{els.carDialogTitle.textContent='Editar coche';els.carNameInput.value=car?.name||'';els.carDeleteArea.hidden=state.cars.length<=1}
+    if(mode==='add'){els.carDialogTitle.textContent='Añadir coche';els.carNameInput.value='';els.carDeleteArea.hidden=true;$('joinCarArea').hidden=false}
+    else{els.carDialogTitle.textContent='Editar coche';els.carNameInput.value=car?.name||'';els.carDeleteArea.hidden=state.cars.length<=1;$('joinCarArea').hidden=true}
     els.carDialog.showModal();setTimeout(()=>els.carNameInput.focus(),50);
   }
   async function saveCarDialog(){
@@ -320,7 +440,18 @@
   async function boot(){
     try{state.auth=await kvGet('auth');await migrateCars()}catch(_){state.cars=[{id:newLocalId(),name:'Mi coche',parking:null,share:null}];state.activeCarId=state.cars[0].id}
     applyActiveCar();updateUI();renderMap();locate();
-    const hash=location.hash||'';if(hash.startsWith('#join='))try{const invite=decodeInvite(hash.slice(6));if(invite?.c&&invite?.t&&invite?.k){state.pendingJoin=invite;els.joinDialog.showModal()}}catch(_){history.replaceState(null,'',location.pathname+location.search);status('El enlace de vinculación no es válido.')}
+    const hash=location.hash||'';
+    if(hash.startsWith('#transfer=')){
+      const code=normalizeTransferCode(decodeURIComponent(hash.slice(10)));
+      if(code.length===12){
+        state.pendingTransferCode=code;els.landingCode.textContent=formatTransferCode(code);els.transferLandingDialog.showModal();
+      }else{
+        history.replaceState(null,'',location.pathname+location.search);status('El código de vinculación no es válido.');
+      }
+    }else if(hash.startsWith('#join='))try{
+      const invite=decodeInvite(hash.slice(6));
+      if(invite?.c&&invite?.t&&invite?.k){state.pendingJoin=invite;els.joinDialog.showModal()}
+    }catch(_){history.replaceState(null,'',location.pathname+location.search);status('El enlace de vinculación no es válido.')}
     if(state.share){await fetchRemoteState();startStream();const pending=await kvGet(`pendingSync:${state.share.carId}`);if(pending&&navigator.onLine)syncActiveCar()}
     if(navigator.storage?.persist)try{await navigator.storage.persist()}catch(_){}
   }
@@ -328,11 +459,11 @@
   $('zoomInBtn').addEventListener('click',()=>setZoom(state.zoom+1));$('zoomOutBtn').addEventListener('click',()=>setZoom(state.zoom-1));$('locateBtn').addEventListener('click',()=>state.user?centerOn(state.user,19):locate());
   $('saveHereBtn').addEventListener('click',saveCandidate);$('cancelCandidateBtn').addEventListener('click',()=>{state.candidate=null;updateUI()});
   $('walkBtn').addEventListener('click',()=>openDirections('walking'));$('driveBtn').addEventListener('click',()=>openDirections('driving'));$('clearBtn').addEventListener('click',clearParking);
-  $('shareBtn').addEventListener('click',openShareDialog);$('shareEmptyBtn').addEventListener('click',openShareDialog);$('createShareBtn').addEventListener('click',createSharedCar);$('nativeShareBtn').addEventListener('click',shareInvite);$('leaveShareBtn').addEventListener('click',leaveSharedCar);$('closeShareBtn').addEventListener('click',()=>els.shareDialog.close());
+  $('shareBtn').addEventListener('click',openShareDialog);$('shareEmptyBtn').addEventListener('click',openShareDialog);$('createShareBtn').addEventListener('click',createSharedCar);$('nativeShareBtn').addEventListener('click',shareInvite);$('newTransferBtn').addEventListener('click',async()=>{try{await createTransfer(true);updateTransferDisplay();status('Nuevo código generado.')}catch(e){status(e.message||'No se pudo generar el código.')}});$('leaveShareBtn').addEventListener('click',leaveSharedCar);$('closeShareBtn').addEventListener('click',()=>els.shareDialog.close());
   $('installHelpBtn').addEventListener('click',()=>els.installDialog.showModal());$('closeInstallBtn').addEventListener('click',()=>els.installDialog.close());
   $('acceptJoinBtn').addEventListener('click',()=>state.pendingJoin&&joinSharedCar(state.pendingJoin));$('cancelJoinBtn').addEventListener('click',()=>{state.pendingJoin=null;history.replaceState(null,'',location.pathname+location.search);els.joinDialog.close()});
   els.carSelect.addEventListener('change',()=>switchActiveCar(els.carSelect.value));$('addCarBtn').addEventListener('click',()=>openCarDialog('add'));$('editCarBtn').addEventListener('click',()=>openCarDialog('edit'));
-  $('carForm').addEventListener('submit',ev=>{ev.preventDefault();saveCarDialog()});$('cancelCarBtn').addEventListener('click',()=>els.carDialog.close());$('deleteCarBtn').addEventListener('click',deleteActiveCar);
+  $('carForm').addEventListener('submit',ev=>{ev.preventDefault();saveCarDialog()});$('cancelCarBtn').addEventListener('click',()=>els.carDialog.close());$('deleteCarBtn').addEventListener('click',deleteActiveCar);$('openCodeJoinBtn').addEventListener('click',()=>{els.carDialog.close();els.joinCodeInput.value='';els.codeJoinDialog.showModal();setTimeout(()=>els.joinCodeInput.focus(),50)});$('codeJoinForm').addEventListener('submit',ev=>{ev.preventDefault();linkWithTransferCode(els.joinCodeInput.value)});$('cancelCodeJoinBtn').addEventListener('click',()=>els.codeJoinDialog.close());$('linkHereBtn').addEventListener('click',()=>state.pendingTransferCode&&linkWithTransferCode(state.pendingTransferCode));$('copyLandingCodeBtn').addEventListener('click',async()=>{if(!state.pendingTransferCode)return;const value=formatTransferCode(state.pendingTransferCode);try{await navigator.clipboard.writeText(value);status('Código copiado.')}catch(_){window.prompt('Copia este código:',value)}});$('closeLandingBtn').addEventListener('click',()=>{state.pendingTransferCode=null;history.replaceState(null,'',location.pathname+location.search);els.transferLandingDialog.close()});
   els.map.addEventListener('pointerdown',onPointerDown);els.map.addEventListener('pointermove',onPointerMove);els.map.addEventListener('pointerup',onPointerUp);els.map.addEventListener('pointercancel',onPointerUp);window.addEventListener('resize',renderMap);
   window.addEventListener('online',async()=>{if(state.share){const pending=await kvGet(`pendingSync:${state.share.carId}`);if(pending)await syncActiveCar();await fetchRemoteState();startStream()}});
   window.addEventListener('offline',stopStream);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopStream();else if(state.share){fetchRemoteState();startStream()}});
