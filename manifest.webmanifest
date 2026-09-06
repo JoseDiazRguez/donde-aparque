@@ -1,7 +1,7 @@
 {
   "name": "¿Dónde aparqué?",
   "short_name": "Dónde aparqué",
-  "description": "Guarda localmente dónde has dejado el coche y vuelve a encontrarlo.",
+  "description": "Guarda y, si quieres, comparte de forma cifrada dónde has dejado el coche.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
