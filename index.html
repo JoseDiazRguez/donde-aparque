@@ -15,7 +15,9 @@
                  connect-src 'self'
                    https://identitytoolkit.googleapis.com
                    https://securetoken.googleapis.com
-                   https://aparcar-2100b-default-rtdb.europe-west1.firebasedatabase.app;
+                   https://aparcar-2100b-default-rtdb.europe-west1.firebasedatabase.app
+                   https://unpkg.com
+                   https://cdn.jsdelivr.net;
                  manifest-src 'self';
                  worker-src 'self';
                  base-uri 'none';
@@ -23,10 +25,10 @@
                  object-src 'none';
                  upgrade-insecure-requests">
   <title>¿Dónde aparqué?</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=134">
+  <link rel="manifest" href="./manifest.webmanifest?v=135">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=3">
   <link rel="icon" href="./icons/icon-192.png?v=3" sizes="192x192">
-  <link rel="stylesheet" href="./styles.css?v=134">
+  <link rel="stylesheet" href="./styles.css?v=135">
 </head>
 <body>
   <main class="app-shell">
@@ -111,7 +113,7 @@
       </details>
     </section>
   </main>
-  <p class="geo-credit">Estadísticas geográficas: solo país, región y municipio; las coordenadas no se guardan en Firebase. Límites administrativos: geoBoundaries.</p>
+  <p class="geo-credit">Estadísticas geográficas: solo país, región y municipio; las coordenadas no se guardan en Firebase. Fuentes administrativas: IGN (España) e IBGE (Brasil).</p>
 
   <dialog id="carDialog">
     <form id="carForm" class="dialog-body">
@@ -231,7 +233,7 @@
           src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"
           integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k"
           crossorigin="anonymous"></script>
-  <script src="./app.js?v=134" defer></script>
-  <div class="app-version" aria-label="Versión de la aplicación">Versión <span id="appVersionLabel">v1.3.2</span></div>
+  <script src="./app.js?v=135" defer></script>
+  <div class="app-version" aria-label="Versión de la aplicación">Versión <span id="appVersionLabel">v1.3.5</span></div>
 </body>
 </html>
