@@ -1,13 +1,13 @@
-const CACHE = 'donde-aparque-v1.3.0';
+const CACHE = 'donde-aparque-v1.3.1';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=130',
-  './app.js?v=130',
-  './manifest.webmanifest?v=130',
+  './styles.css?v=131',
+  './app.js?v=131',
+  './manifest.webmanifest?v=131',
   './admin.html',
-  './admin.css?v=130',
-  './admin.js?v=130',
+  './admin.css?v=131',
+  './admin.js?v=131',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'

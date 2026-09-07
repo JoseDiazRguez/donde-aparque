@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.3.1';
   const TILE_SIZE = 256, EARTH_RADIUS = 6378137, MIN_ZOOM = 3, MAX_ZOOM = 19;
   const FIREBASE = {
     apiKey:'AIzaSyCrhYq5nuXtdnGubI8M_kdsezDvgkZ5QbU',
@@ -27,7 +27,7 @@
     center:{lat:37.3891,lon:-5.9845},zoom:18,user:null,candidate:null,parking:null,
     watchId:null,locatedOnce:false,pointers:new Map(),gesture:null,auth:null,
     cars:[],activeCarId:null,share:null,pendingJoin:null,stream:null,syncTimer:null,syncing:false,
-    carDialogMode:'add',activeTransfer:null,pendingTransferCode:null,telemetryDone:false
+    carDialogMode:'add',activeTransfer:null,pendingTransferCode:null,telemetryBasicDone:false,telemetryGeoDone:false
   };
   const enc = new TextEncoder(), dec = new TextDecoder();
 
@@ -335,8 +335,11 @@
   }
 
   async function trackInstallation(coord){
-    if(state.telemetryDone)return;
-    state.telemetryDone=true;
+    const hasGeo=!!(coord&&Number.isFinite(coord.lat)&&Number.isFinite(coord.lon));
+    if(hasGeo&&state.telemetryGeoDone)return;
+    if(!hasGeo&&state.telemetryBasicDone)return;
+    if(hasGeo)state.telemetryGeoDone=true;
+    else state.telemetryBasicDone=true;
     try{
       const auth=await ensureAuth(),path=`/stats/installations/${encodeURIComponent(auth.uid)}.json`;
       let existing=null;
@@ -364,7 +367,8 @@
       }
       await firebaseFetch(path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)});
     }catch(_){
-      state.telemetryDone=false;
+      if(hasGeo)state.telemetryGeoDone=false;
+      else state.telemetryBasicDone=false;
     }
   }
 
@@ -594,7 +598,11 @@ ${url}`);
 
   async function boot(){
     try{state.auth=await kvGet('auth');await migrateCars()}catch(_){state.cars=[{id:newLocalId(),name:'Mi coche',parking:null,share:null}];state.activeCarId=state.cars[0].id}
-    applyActiveCar();updateUI();renderMap();locate();setTimeout(()=>{if(!state.telemetryDone)trackInstallation(null)},5000);
+    applyActiveCar();updateUI();renderMap();locate();
+    setTimeout(()=>trackInstallation(null),5000);
+    for(const car of state.cars){
+      if(car.share?.carId)trackCarMembership(car.share.carId);
+    }
     const hash=location.hash||'';
     if(hash.startsWith('#transfer=')){
       const code=normalizeTransferCode(decodeURIComponent(hash.slice(10)));
@@ -622,6 +630,6 @@ ${url}`);
   els.map.addEventListener('pointerdown',onPointerDown);els.map.addEventListener('pointermove',onPointerMove);els.map.addEventListener('pointerup',onPointerUp);els.map.addEventListener('pointercancel',onPointerUp);window.addEventListener('resize',renderMap);
   window.addEventListener('online',async()=>{if(state.share){const pending=await kvGet(`pendingSync:${state.share.carId}`);if(pending)await syncActiveCar();await fetchRemoteState();startStream()}});
   window.addEventListener('offline',stopStream);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopStream();else if(state.share){fetchRemoteState();startStream()}});
-  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=130').catch(()=>{}));
+  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=131').catch(()=>{}));
   boot();
 })();
