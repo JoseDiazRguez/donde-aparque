@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.3.2';
   const TILE_SIZE = 256, EARTH_RADIUS = 6378137, MIN_ZOOM = 3, MAX_ZOOM = 19;
   const FIREBASE = {
     apiKey:'AIzaSyCrhYq5nuXtdnGubI8M_kdsezDvgkZ5QbU',
@@ -30,6 +30,9 @@
     carDialogMode:'add',activeTransfer:null,pendingTransferCode:null,telemetryBasicDone:false,telemetryGeoDone:false
   };
   const enc = new TextEncoder(), dec = new TextDecoder();
+
+  const versionEl=$('appVersionLabel');
+  if(versionEl)versionEl.textContent=`v${APP_VERSION}`;
 
   function activeCar(){ return state.cars.find(c=>c.id===state.activeCarId)||null; }
   function cleanName(v){ return String(v||'').trim().replace(/\s+/g,' ').slice(0,40) || 'Mi coche'; }
@@ -630,6 +633,6 @@ ${url}`);
   els.map.addEventListener('pointerdown',onPointerDown);els.map.addEventListener('pointermove',onPointerMove);els.map.addEventListener('pointerup',onPointerUp);els.map.addEventListener('pointercancel',onPointerUp);window.addEventListener('resize',renderMap);
   window.addEventListener('online',async()=>{if(state.share){const pending=await kvGet(`pendingSync:${state.share.carId}`);if(pending)await syncActiveCar();await fetchRemoteState();startStream()}});
   window.addEventListener('offline',stopStream);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopStream();else if(state.share){fetchRemoteState();startStream()}});
-  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=131').catch(()=>{}));
+  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=132').then(reg=>reg.update().catch(()=>{})).catch(()=>{}));
   boot();
 })();

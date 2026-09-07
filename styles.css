@@ -99,3 +99,19 @@ dialog::backdrop{background:rgba(10,17,30,.58)}.dialog-body{padding:18px}.dialog
   line-height:1.35;
   color:var(--muted);
 }
+
+.app-version{
+  position:fixed;
+  right:8px;
+  bottom:5px;
+  z-index:20;
+  padding:3px 6px;
+  border-radius:8px;
+  background:rgba(255,255,255,.78);
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  color:var(--muted);
+  font-size:9px;
+  line-height:1;
+  pointer-events:none;
+}

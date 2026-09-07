@@ -1,13 +1,13 @@
-const CACHE = 'donde-aparque-v1.3.1';
+const CACHE = 'donde-aparque-v1.3.2';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=131',
-  './app.js?v=131',
-  './manifest.webmanifest?v=131',
+  './styles.css?v=132',
+  './app.js?v=132',
+  './manifest.webmanifest?v=132',
   './admin.html',
-  './admin.css?v=131',
-  './admin.js?v=131',
+  './admin.css?v=132',
+  './admin.js?v=132',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'
@@ -25,20 +25,30 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put('./index.html', copy));
-      return response;
-    }).catch(() => caches.match('./index.html')));
+  // Navigation and core application files: prefer network so updates appear promptly.
+  const core = event.request.mode === 'navigate'
+    || /\/(?:index\.html|app\.js|styles\.css|manifest\.webmanifest|admin\.html|admin\.js|admin\.css)$/.test(url.pathname);
+
+  if (core) {
+    event.respondWith(
+      fetch(event.request, {cache:'no-store'}).then(response => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then(cache => cache.put(event.request.mode === 'navigate' ? './index.html' : event.request, copy));
+        }
+        return response;
+      }).catch(() => event.request.mode === 'navigate' ? caches.match('./index.html') : caches.match(event.request))
+    );
     return;
   }
 
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-    if (response.ok) {
-      const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put(event.request, copy));
-    }
-    return response;
-  })));
+  event.respondWith(
+    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      }
+      return response;
+    }))
+  );
 });
