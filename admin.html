@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Administración · ¿Dónde aparqué?</title>
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./admin.css?v=130">
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <h1>¿Dónde aparqué?</h1>
+        <p>Panel de administración</p>
+      </div>
+      <button id="logoutBtn" class="ghost" hidden>Cerrar sesión</button>
+    </header>
+
+    <section id="loginCard" class="panel login-card">
+      <h2>Acceso</h2>
+      <p>Inicia sesión con el usuario administrador configurado en Firebase Authentication.</p>
+      <form id="loginForm">
+        <label>Correo<input id="email" type="email" autocomplete="username" required></label>
+        <label>Contraseña<input id="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Entrar</button>
+      </form>
+      <p id="loginStatus" class="status"></p>
+    </section>
+
+    <section id="dashboard" hidden>
+      <div class="toolbar panel">
+        <div>
+          <strong id="updatedAt">—</strong>
+          <span>Última actualización</span>
+        </div>
+        <button id="refreshBtn">Actualizar</button>
+      </div>
+
+      <div class="cards">
+        <article class="metric"><span>Instalaciones/contextos</span><strong id="mTotal">0</strong></article>
+        <article class="metric"><span>Activos 24 h</span><strong id="m24">0</strong></article>
+        <article class="metric"><span>Activos 7 días</span><strong id="m7">0</strong></article>
+        <article class="metric"><span>Activos 30 días</span><strong id="m30">0</strong></article>
+        <article class="metric"><span>PWA instalada</span><strong id="mPwa">0</strong></article>
+        <article class="metric"><span>Navegador</span><strong id="mBrowser">0</strong></article>
+        <article class="metric"><span>Coches compartidos</span><strong id="mCars">0</strong></article>
+        <article class="metric"><span>Vinculaciones activas</span><strong id="mLinks">0</strong></article>
+      </div>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>Versiones</h2>
+          <div id="versions"></div>
+        </section>
+        <section class="panel">
+          <h2>Países</h2>
+          <div id="countries"></div>
+        </section>
+        <section class="panel wide">
+          <h2>Regiones y municipios</h2>
+          <div class="filters">
+            <select id="countryFilter"><option value="">Todos los países</option></select>
+            <select id="regionFilter"><option value="">Todas las regiones</option></select>
+          </div>
+          <div id="municipalities"></div>
+        </section>
+      </div>
+
+      <p class="privacy-note">
+        No se muestran ni almacenan coordenadas en estas estadísticas. Cada registro representa un contexto de Firebase
+        (por ejemplo, Safari y la PWA instalada pueden ser dos contextos distintos en el mismo iPhone).
+      </p>
+    </section>
+
+    <footer>
+      Límites administrativos usados por la aplicación: geoBoundaries (fuentes IGN/INE para España e IBGE/OCHA para Brasil).
+    </footer>
+  </main>
+  <script src="./admin.js?v=130"></script>
+</body>
+</html>

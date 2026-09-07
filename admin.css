@@ -1,0 +1,38 @@
+
+:root{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  color:#172033;background:#f4f7fb;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f7fb}
+button,input,select{font:inherit}
+button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;background:#1469df;color:white;font-weight:700}
+button.ghost{background:#eef3fb;color:#234}
+.admin-shell{max-width:1100px;margin:auto;padding:20px}
+.admin-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.admin-header h1{font-size:24px;margin:0}.admin-header p{margin:3px 0;color:#68758a}
+.panel,.metric{background:white;border:1px solid #dfe6ef;border-radius:16px;box-shadow:0 4px 18px rgba(25,45,80,.05)}
+.panel{padding:18px}
+.login-card{max-width:430px;margin:60px auto}
+.login-card h2{margin-top:0}
+label{display:grid;gap:6px;margin:13px 0;font-weight:650}
+input,select{width:100%;padding:11px;border:1px solid #ccd6e4;border-radius:10px;background:white;color:#172033}
+.status{min-height:1.3em;color:#b42318}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.toolbar div{display:grid}.toolbar span{font-size:12px;color:#68758a}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.metric{padding:16px;display:grid;gap:8px}.metric span{font-size:12px;color:#68758a}.metric strong{font-size:28px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid .wide{grid-column:1/-1}
+.panel h2{margin:0 0 12px;font-size:17px}
+.stat-row{display:grid;grid-template-columns:1fr auto;gap:12px;padding:8px 0;border-bottom:1px solid #edf1f6}
+.stat-row:last-child{border-bottom:0}.stat-row strong{font-variant-numeric:tabular-nums}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.privacy-note,footer{font-size:12px;color:#68758a;line-height:1.45}
+.privacy-note{margin:16px 2px}footer{text-align:center;margin:20px}
+@media(max-width:760px){
+  .cards{grid-template-columns:repeat(2,1fr)}
+  .grid{grid-template-columns:1fr}
+  .filters{grid-template-columns:1fr}
+  .admin-shell{padding:12px}
+}

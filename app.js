@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.2';
+  const APP_VERSION = '1.3.0';
   const TILE_SIZE = 256, EARTH_RADIUS = 6378137, MIN_ZOOM = 3, MAX_ZOOM = 19;
   const FIREBASE = {
     apiKey:'AIzaSyCrhYq5nuXtdnGubI8M_kdsezDvgkZ5QbU',
@@ -27,7 +27,7 @@
     center:{lat:37.3891,lon:-5.9845},zoom:18,user:null,candidate:null,parking:null,
     watchId:null,locatedOnce:false,pointers:new Map(),gesture:null,auth:null,
     cars:[],activeCarId:null,share:null,pendingJoin:null,stream:null,syncTimer:null,syncing:false,
-    carDialogMode:'add',activeTransfer:null,pendingTransferCode:null
+    carDialogMode:'add',activeTransfer:null,pendingTransferCode:null,telemetryDone:false
   };
   const enc = new TextEncoder(), dec = new TextDecoder();
 
@@ -149,7 +149,7 @@
     state.watchId=navigator.geolocation.watchPosition(pos=>{
       const first=!state.locatedOnce;state.user={lat:pos.coords.latitude,lon:pos.coords.longitude,accuracy:pos.coords.accuracy};state.locatedOnce=true;
       status(`Ubicación localizada · precisión ±${Math.round(pos.coords.accuracy)} m`);
-      if(first){state.parking?fitBoth():centerOn(state.user,19)}else updateUI();
+      if(first){state.parking?fitBoth():centerOn(state.user,19);trackInstallation(state.user)}else updateUI();
     },err=>{if(err.code===1)status('Permiso de ubicación denegado.');else if(err.code===2)status('No se puede obtener la ubicación.');else status('La localización está tardando. Pulsa ⌖.');},{enableHighAccuracy:true,timeout:12000,maximumAge:4000});
   }
 
@@ -234,6 +234,161 @@
     return res;
   }
 
+  const GEO_SOURCES = {
+    ESP_MUNI:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/ESP/ADM3/geoBoundaries-ESP-ADM3_simplified.geojson',
+    ESP_PROV:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/ESP/ADM2/geoBoundaries-ESP-ADM2_simplified.geojson',
+    BRA_MUNI:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/BRA/ADM2/geoBoundaries-BRA-ADM2_simplified.geojson',
+    BRA_STATE:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/BRA/ADM1/geoBoundaries-BRA-ADM1_simplified.geojson'
+  };
+  const geoCache=new Map();
+
+  function featureBBox(feature){
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    const walk=c=>{
+      if(!Array.isArray(c))return;
+      if(typeof c[0]==='number'&&typeof c[1]==='number'){
+        minX=Math.min(minX,c[0]);maxX=Math.max(maxX,c[0]);
+        minY=Math.min(minY,c[1]);maxY=Math.max(maxY,c[1]);return;
+      }
+      for(const x of c)walk(x);
+    };
+    walk(feature?.geometry?.coordinates);
+    return[minX,minY,maxX,maxY];
+  }
+
+  function pointInRing(lon,lat,ring){
+    let inside=false;
+    for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+      const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+      const cross=((yi>lat)!==(yj>lat))&&(lon<(xj-xi)*(lat-yi)/((yj-yi)||1e-20)+xi);
+      if(cross)inside=!inside;
+    }
+    return inside;
+  }
+  function pointInPolygon(lon,lat,poly){
+    if(!poly?.length||!pointInRing(lon,lat,poly[0]))return false;
+    for(let i=1;i<poly.length;i++)if(pointInRing(lon,lat,poly[i]))return false;
+    return true;
+  }
+  function pointInGeometry(lon,lat,g){
+    if(!g)return false;
+    if(g.type==='Polygon')return pointInPolygon(lon,lat,g.coordinates);
+    if(g.type==='MultiPolygon')return g.coordinates.some(p=>pointInPolygon(lon,lat,p));
+    return false;
+  }
+
+  async function loadGeo(url){
+    if(geoCache.has(url))return geoCache.get(url);
+    const promise=fetch(url,{cache:'force-cache'}).then(async res=>{
+      if(!res.ok)throw new Error('No se pudieron cargar los límites administrativos.');
+      const gj=await res.json();
+      return (gj.features||[]).map(f=>({f,b:featureBBox(f)}));
+    });
+    geoCache.set(url,promise);
+    return promise;
+  }
+
+  async function findAdminName(url,lat,lon){
+    const indexed=await loadGeo(url);
+    for(const item of indexed){
+      const [minX,minY,maxX,maxY]=item.b;
+      if(lon<minX||lon>maxX||lat<minY||lat>maxY)continue;
+      if(pointInGeometry(lon,lat,item.f.geometry)){
+        const p=item.f.properties||{};
+        return p.shapeName||p.NAME_1||p.NAME_2||p.NAME_3||p.name||null;
+      }
+    }
+    return null;
+  }
+
+  function likelySpain(lat,lon){
+    return lat>=27.4&&lat<=44.3&&lon>=-18.6&&lon<=4.8;
+  }
+  function likelyBrazil(lat,lon){
+    return lat>=-34.2&&lat<=5.7&&lon>=-74.2&&lon<=-32.0;
+  }
+
+  async function resolveAdministrativeArea(coord){
+    const {lat,lon}=coord;
+    try{
+      if(likelySpain(lat,lon)){
+        const municipality=await findAdminName(GEO_SOURCES.ESP_MUNI,lat,lon);
+        if(municipality){
+          const region=await findAdminName(GEO_SOURCES.ESP_PROV,lat,lon);
+          return{country:'España',region:region||'Sin identificar',municipality};
+        }
+      }
+      if(likelyBrazil(lat,lon)){
+        const municipality=await findAdminName(GEO_SOURCES.BRA_MUNI,lat,lon);
+        if(municipality){
+          const region=await findAdminName(GEO_SOURCES.BRA_STATE,lat,lon);
+          return{country:'Brasil',region:region||'Sin identificar',municipality};
+        }
+      }
+    }catch(_){}
+    return null;
+  }
+
+  function appMode(){
+    return (window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true)
+      ?'standalone':'browser';
+  }
+
+  async function trackInstallation(coord){
+    if(state.telemetryDone)return;
+    state.telemetryDone=true;
+    try{
+      const auth=await ensureAuth(),path=`/stats/installations/${encodeURIComponent(auth.uid)}.json`;
+      let existing=null;
+      try{
+        const r=await firebaseFetch(path);
+        if(r.ok)existing=await r.json();
+      }catch(_){}
+      const now=Date.now();
+      let geo=null;
+      if(coord&&Number.isFinite(coord.lat)&&Number.isFinite(coord.lon))geo=await resolveAdministrativeArea(coord);
+      const record={
+        firstSeen:Number(existing?.firstSeen)||now,
+        lastSeen:now,
+        version:APP_VERSION,
+        mode:appMode()
+      };
+      if(geo){
+        record.country=geo.country;
+        record.region=geo.region;
+        record.municipality=geo.municipality;
+      }else if(existing){
+        if(existing.country)record.country=existing.country;
+        if(existing.region)record.region=existing.region;
+        if(existing.municipality)record.municipality=existing.municipality;
+      }
+      await firebaseFetch(path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)});
+    }catch(_){
+      state.telemetryDone=false;
+    }
+  }
+
+  async function trackCarMembership(carId,remove=false){
+    if(!carId)return;
+    try{
+      const auth=await ensureAuth(),path=`/stats/carMembers/${encodeURIComponent(carId)}/${encodeURIComponent(auth.uid)}.json`;
+      if(remove){
+        await firebaseFetch(path,{method:'DELETE'});
+        return;
+      }
+      let existing=null;
+      try{
+        const r=await firebaseFetch(path);
+        if(r.ok)existing=await r.json();
+      }catch(_){}
+      const now=Date.now();
+      await firebaseFetch(path,{
+        method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({firstSeen:Number(existing?.firstSeen)||now,lastSeen:now})
+      });
+    }catch(_){}
+  }
+
   async function createSharedCar(){
     const car=activeCar();if(!car)return;state.syncing=true;updateUI();
     try{
@@ -241,7 +396,7 @@
       const share={carId,inviteToken,key,createdBy:auth.uid},remote={ownerUid:auth.uid,inviteToken,members:{[auth.uid]:{joinedAt:Date.now()}},payload:await encryptState(activeRemoteState(),key)};
       const res=await firebaseFetch(`/cars/${encodeURIComponent(carId)}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(remote)});
       if(!res.ok)throw new Error(`Firebase rechazó la creación (${res.status}).`);
-      car.share=share;state.share=share;await persistCars();startStream();renderShareDialog();status(`«${car.name}» ya está compartido.`);
+      car.share=share;state.share=share;await persistCars();trackCarMembership(carId);startStream();renderShareDialog();status(`«${car.name}» ya está compartido.`);
     }catch(e){status(e.message||'No se pudo crear el coche compartido.')}finally{state.syncing=false;updateUI()}
   }
 
@@ -332,7 +487,7 @@
     try{
       const existing=state.cars.find(c=>c.share?.carId===invite.c);
       if(existing){
-        state.activeCarId=existing.id;await persistCars();applyActiveCar();history.replaceState(null,'',location.pathname+location.search);state.pendingJoin=null;try{els.joinDialog.close()}catch(_){}await switchActiveCar(existing.id);status('Ese coche ya estaba vinculado.');return;
+        state.activeCarId=existing.id;await persistCars();applyActiveCar();history.replaceState(null,'',location.pathname+location.search);state.pendingJoin=null;try{els.joinDialog.close()}catch(_){}trackCarMembership(invite.c);await switchActiveCar(existing.id);status('Ese coche ya estaba vinculado.');return;
       }
       const auth=await ensureAuth(),memberPath=`/cars/${encodeURIComponent(invite.c)}/members/${encodeURIComponent(auth.uid)}.json`;
       let res=await firebaseFetch(memberPath,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({inviteToken:invite.t,joinedAt:Date.now()})});
@@ -342,7 +497,7 @@
       const newCar={id:newLocalId(),name:'Coche compartido',parking:null,share:{carId:invite.c,inviteToken:invite.t,key:invite.k,createdBy:null}};
       state.cars.push(newCar);state.activeCarId=newCar.id;await persistCars();applyActiveCar();
       history.replaceState(null,'',location.pathname+location.search);state.pendingJoin=null;try{els.joinDialog.close()}catch(_){}
-      await fetchRemoteState();startStream();status(`Coche vinculado: ${activeCar()?.name||'Coche compartido'}.`);
+      await fetchRemoteState();trackCarMembership(invite.c);startStream();status(`Coche vinculado: ${activeCar()?.name||'Coche compartido'}.`);
     }catch(e){status(e.message||'No se pudo vincular el dispositivo.')}finally{state.syncing=false;updateUI()}
   }
 
@@ -388,7 +543,7 @@
 
   async function leaveSharedCar(){
     const car=activeCar();if(!car?.share)return;const ok=await confirmAction('Desvincular coche',`«${car.name}» dejará de recibir actualizaciones en este dispositivo. La copia local se conservará.`,'Desvincular');if(!ok)return;
-    try{const auth=await ensureAuth();await firebaseFetch(`/cars/${encodeURIComponent(car.share.carId)}/members/${encodeURIComponent(auth.uid)}.json`,{method:'DELETE'})}catch(_){}
+    try{const auth=await ensureAuth();const leavingCarId=car.share.carId;await firebaseFetch(`/cars/${encodeURIComponent(leavingCarId)}/members/${encodeURIComponent(auth.uid)}.json`,{method:'DELETE'});await trackCarMembership(leavingCarId,true)}catch(_){}
     stopStream();car.share=null;state.share=null;await persistCars();try{els.shareDialog.close()}catch(_){}updateUI();status('Este coche ya no está vinculado.');
   }
   async function shareInvite(){
@@ -439,7 +594,7 @@ ${url}`);
 
   async function boot(){
     try{state.auth=await kvGet('auth');await migrateCars()}catch(_){state.cars=[{id:newLocalId(),name:'Mi coche',parking:null,share:null}];state.activeCarId=state.cars[0].id}
-    applyActiveCar();updateUI();renderMap();locate();
+    applyActiveCar();updateUI();renderMap();locate();setTimeout(()=>{if(!state.telemetryDone)trackInstallation(null)},5000);
     const hash=location.hash||'';
     if(hash.startsWith('#transfer=')){
       const code=normalizeTransferCode(decodeURIComponent(hash.slice(10)));
@@ -467,6 +622,6 @@ ${url}`);
   els.map.addEventListener('pointerdown',onPointerDown);els.map.addEventListener('pointermove',onPointerMove);els.map.addEventListener('pointerup',onPointerUp);els.map.addEventListener('pointercancel',onPointerUp);window.addEventListener('resize',renderMap);
   window.addEventListener('online',async()=>{if(state.share){const pending=await kvGet(`pendingSync:${state.share.carId}`);if(pending)await syncActiveCar();await fetchRemoteState();startStream()}});
   window.addEventListener('offline',stopStream);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopStream();else if(state.share){fetchRemoteState();startStream()}});
-  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=120').catch(()=>{}));
+  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=130').catch(()=>{}));
   boot();
 })();
