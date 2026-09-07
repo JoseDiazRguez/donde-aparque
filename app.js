@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.3';
+  const APP_VERSION = '1.3.4';
   const TILE_SIZE = 256, EARTH_RADIUS = 6378137, MIN_ZOOM = 3, MAX_ZOOM = 19;
   const FIREBASE = {
     apiKey:'AIzaSyCrhYq5nuXtdnGubI8M_kdsezDvgkZ5QbU',
@@ -238,10 +238,9 @@
   }
 
   const GEO_SOURCES = {
-    ESP_MUNI:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/ESP/ADM3/geoBoundaries-ESP-ADM3_simplified.geojson',
-    ESP_PROV:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/ESP/ADM2/geoBoundaries-ESP-ADM2_simplified.geojson',
-    BRA_MUNI:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/BRA/ADM2/geoBoundaries-BRA-ADM2_simplified.geojson',
-    BRA_STATE:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/BRA/ADM1/geoBoundaries-BRA-ADM1_simplified.geojson'
+    SPAIN:'https://unpkg.com/es-atlas@0.6.0/es/municipalities.json',
+    BRAZIL_STATES:'https://cdn.jsdelivr.net/gh/henriquemalvar/br-geojson@main/dist/estados.geojson',
+    BRAZIL_MUNICIPALITIES_BASE:'https://cdn.jsdelivr.net/gh/henriquemalvar/br-geojson@main/dist/municipios/'
   };
   const geoCache=new Map();
 
@@ -280,28 +279,104 @@
     return false;
   }
 
-  async function loadGeo(url){
+  async function fetchJson(url){
     if(geoCache.has(url))return geoCache.get(url);
     const promise=fetch(url,{cache:'force-cache'}).then(async res=>{
-      if(!res.ok)throw new Error('No se pudieron cargar los límites administrativos.');
-      const gj=await res.json();
-      return (gj.features||[]).map(f=>({f,b:featureBBox(f)}));
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const ct=res.headers.get('content-type')||'';
+      const text=await res.text();
+      if(text.startsWith('version https://git-lfs.github.com/spec/v1'))throw new Error('Git LFS pointer');
+      try{return JSON.parse(text)}catch(_){throw new Error(`JSON inválido (${ct||'sin content-type'})`)}
     });
     geoCache.set(url,promise);
     return promise;
   }
 
-  async function findAdminName(url,lat,lon){
-    const indexed=await loadGeo(url);
+  function topoArc(topology,index){
+    const reverse=index<0;
+    const arc=topology.arcs[reverse?~index:index];
+    const scale=topology.transform?.scale||[1,1],translate=topology.transform?.translate||[0,0];
+    let x=0,y=0;
+    const pts=arc.map(p=>{
+      x+=p[0];y+=p[1];
+      return[x*scale[0]+translate[0],y*scale[1]+translate[1]];
+    });
+    return reverse?pts.reverse():pts;
+  }
+  function topoRing(topology,indexes){
+    const out=[];
+    for(const idx of indexes){
+      const pts=topoArc(topology,idx);
+      if(out.length&&pts.length)pts.shift();
+      out.push(...pts);
+    }
+    return out;
+  }
+  function topoGeometry(topology,g){
+    if(g.type==='Polygon'){
+      return{type:'Polygon',coordinates:g.arcs.map(r=>topoRing(topology,r))};
+    }
+    if(g.type==='MultiPolygon'){
+      return{type:'MultiPolygon',coordinates:g.arcs.map(p=>p.map(r=>topoRing(topology,r)))};
+    }
+    return null;
+  }
+  function topoFeatures(topology,objectName){
+    const obj=topology?.objects?.[objectName];
+    if(!obj)return[];
+    const geometries=obj.type==='GeometryCollection'?obj.geometries:[obj];
+    return geometries.map(g=>({
+      type:'Feature',
+      id:g.id,
+      properties:g.properties||{},
+      geometry:topoGeometry(topology,g)
+    })).filter(f=>f.geometry);
+  }
+
+  function indexFeatures(features){
+    return (features||[]).map(f=>({f,b:featureBBox(f)}));
+  }
+  function findFeature(indexed,lat,lon){
     for(const item of indexed){
       const [minX,minY,maxX,maxY]=item.b;
       if(lon<minX||lon>maxX||lat<minY||lat>maxY)continue;
-      if(pointInGeometry(lon,lat,item.f.geometry)){
-        const p=item.f.properties||{};
-        return p.shapeName||p.NAME_1||p.NAME_2||p.NAME_3||p.name||null;
-      }
+      if(pointInGeometry(lon,lat,item.f.geometry))return item.f;
     }
     return null;
+  }
+
+  async function resolveSpain(lat,lon){
+    const topo=await fetchJson(GEO_SOURCES.SPAIN);
+    const municipalities=indexFeatures(topoFeatures(topo,'municipalities'));
+    const provinces=indexFeatures(topoFeatures(topo,'provinces'));
+    const muni=findFeature(municipalities,lat,lon);
+    if(!muni)return null;
+    const prov=findFeature(provinces,lat,lon);
+    return{
+      country:'España',
+      region:prov?.properties?.name||'Sin identificar',
+      municipality:muni?.properties?.name||'Sin identificar',
+      geoStatus:'ok'
+    };
+  }
+
+  async function resolveBrazil(lat,lon){
+    const statesGeo=await fetchJson(GEO_SOURCES.BRAZIL_STATES);
+    const state=findFeature(indexFeatures(statesGeo.features||[]),lat,lon);
+    if(!state)return null;
+    const p=state.properties||{};
+    const uf=String(p.sigla||p.uf||'').toUpperCase();
+    const stateName=p.nome||p.name||uf||'Sin identificar';
+    if(!uf)throw new Error('Estado sin sigla');
+    const munGeo=await fetchJson(`${GEO_SOURCES.BRAZIL_MUNICIPALITIES_BASE}${encodeURIComponent(uf)}.geojson`);
+    const muni=findFeature(indexFeatures(munGeo.features||[]),lat,lon);
+    if(!muni)return null;
+    return{
+      country:'Brasil',
+      region:stateName,
+      municipality:muni.properties?.nome||muni.properties?.name||'Sin identificar',
+      geoStatus:'ok'
+    };
   }
 
   function likelySpain(lat,lon){
@@ -315,23 +390,16 @@
     const {lat,lon}=coord;
     try{
       if(likelySpain(lat,lon)){
-        const municipality=await findAdminName(GEO_SOURCES.ESP_MUNI,lat,lon);
-        if(municipality){
-          const region=await findAdminName(GEO_SOURCES.ESP_PROV,lat,lon);
-          return{country:'España',region:region||'Sin identificar',municipality,geoStatus:'ok'};
-        }
-        return{geoStatus:'boundary_not_found'};
+        const result=await resolveSpain(lat,lon);
+        return result||{geoStatus:'boundary_not_found'};
       }
       if(likelyBrazil(lat,lon)){
-        const municipality=await findAdminName(GEO_SOURCES.BRA_MUNI,lat,lon);
-        if(municipality){
-          const region=await findAdminName(GEO_SOURCES.BRA_STATE,lat,lon);
-          return{country:'Brasil',region:region||'Sin identificar',municipality,geoStatus:'ok'};
-        }
-        return{geoStatus:'boundary_not_found'};
+        const result=await resolveBrazil(lat,lon);
+        return result||{geoStatus:'boundary_not_found'};
       }
       return{geoStatus:'outside_supported_area'};
     }catch(e){
+      console.warn('Geo stats:',e);
       return{geoStatus:'download_or_parse_error'};
     }
   }
@@ -639,6 +707,6 @@ ${url}`);
   els.map.addEventListener('pointerdown',onPointerDown);els.map.addEventListener('pointermove',onPointerMove);els.map.addEventListener('pointerup',onPointerUp);els.map.addEventListener('pointercancel',onPointerUp);window.addEventListener('resize',renderMap);
   window.addEventListener('online',async()=>{if(state.share){const pending=await kvGet(`pendingSync:${state.share.carId}`);if(pending)await syncActiveCar();await fetchRemoteState();startStream()}});
   window.addEventListener('offline',stopStream);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopStream();else if(state.share){fetchRemoteState();startStream()}});
-  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=133').then(reg=>reg.update().catch(()=>{})).catch(()=>{}));
+  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=134').then(reg=>reg.update().catch(()=>{})).catch(()=>{}));
   boot();
 })();
