@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.2';
+  const APP_VERSION = '1.3.3';
   const TILE_SIZE = 256, EARTH_RADIUS = 6378137, MIN_ZOOM = 3, MAX_ZOOM = 19;
   const FIREBASE = {
     apiKey:'AIzaSyCrhYq5nuXtdnGubI8M_kdsezDvgkZ5QbU',
@@ -238,10 +238,10 @@
   }
 
   const GEO_SOURCES = {
-    ESP_MUNI:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/ESP/ADM3/geoBoundaries-ESP-ADM3_simplified.geojson',
-    ESP_PROV:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/ESP/ADM2/geoBoundaries-ESP-ADM2_simplified.geojson',
-    BRA_MUNI:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/BRA/ADM2/geoBoundaries-BRA-ADM2_simplified.geojson',
-    BRA_STATE:'https://raw.githubusercontent.com/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/BRA/ADM1/geoBoundaries-BRA-ADM1_simplified.geojson'
+    ESP_MUNI:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/ESP/ADM3/geoBoundaries-ESP-ADM3_simplified.geojson',
+    ESP_PROV:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/ESP/ADM2/geoBoundaries-ESP-ADM2_simplified.geojson',
+    BRA_MUNI:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/BRA/ADM2/geoBoundaries-BRA-ADM2_simplified.geojson',
+    BRA_STATE:'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@9469f09/releaseData/gbOpen/BRA/ADM1/geoBoundaries-BRA-ADM1_simplified.geojson'
   };
   const geoCache=new Map();
 
@@ -318,18 +318,22 @@
         const municipality=await findAdminName(GEO_SOURCES.ESP_MUNI,lat,lon);
         if(municipality){
           const region=await findAdminName(GEO_SOURCES.ESP_PROV,lat,lon);
-          return{country:'España',region:region||'Sin identificar',municipality};
+          return{country:'España',region:region||'Sin identificar',municipality,geoStatus:'ok'};
         }
+        return{geoStatus:'boundary_not_found'};
       }
       if(likelyBrazil(lat,lon)){
         const municipality=await findAdminName(GEO_SOURCES.BRA_MUNI,lat,lon);
         if(municipality){
           const region=await findAdminName(GEO_SOURCES.BRA_STATE,lat,lon);
-          return{country:'Brasil',region:region||'Sin identificar',municipality};
+          return{country:'Brasil',region:region||'Sin identificar',municipality,geoStatus:'ok'};
         }
+        return{geoStatus:'boundary_not_found'};
       }
-    }catch(_){}
-    return null;
+      return{geoStatus:'outside_supported_area'};
+    }catch(e){
+      return{geoStatus:'download_or_parse_error'};
+    }
   }
 
   function appMode(){
@@ -359,7 +363,8 @@
         version:APP_VERSION,
         mode:appMode()
       };
-      if(geo){
+      if(geo?.geoStatus)record.geoStatus=geo.geoStatus;
+      if(geo?.country&&geo?.municipality){
         record.country=geo.country;
         record.region=geo.region;
         record.municipality=geo.municipality;
@@ -367,6 +372,7 @@
         if(existing.country)record.country=existing.country;
         if(existing.region)record.region=existing.region;
         if(existing.municipality)record.municipality=existing.municipality;
+        if(!record.geoStatus&&existing.geoStatus)record.geoStatus=existing.geoStatus;
       }
       await firebaseFetch(path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)});
     }catch(_){
@@ -633,6 +639,6 @@ ${url}`);
   els.map.addEventListener('pointerdown',onPointerDown);els.map.addEventListener('pointermove',onPointerMove);els.map.addEventListener('pointerup',onPointerUp);els.map.addEventListener('pointercancel',onPointerUp);window.addEventListener('resize',renderMap);
   window.addEventListener('online',async()=>{if(state.share){const pending=await kvGet(`pendingSync:${state.share.carId}`);if(pending)await syncActiveCar();await fetchRemoteState();startStream()}});
   window.addEventListener('offline',stopStream);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopStream();else if(state.share){fetchRemoteState();startStream()}});
-  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=132').then(reg=>reg.update().catch(()=>{})).catch(()=>{}));
+  if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=133').then(reg=>reg.update().catch(()=>{})).catch(()=>{}));
   boot();
 })();

@@ -68,6 +68,7 @@
 
     renderRows($('versions'),countMap(installs.map(x=>x.version)));
     renderRows($('countries'),countMap(installs.map(x=>x.country)));
+    renderRows($('geoStatus'),countMap(installs.map(x=>x.geoStatus||'sin diagnóstico')));
 
     const countries=[...new Set(installs.map(x=>x.country).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
     const cf=$('countryFilter'),selectedCountry=cf.value;
